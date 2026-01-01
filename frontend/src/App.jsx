@@ -1,26 +1,40 @@
 import { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatInterface from './components/ChatInterface';
+import Login from './components/Login';
 import { api } from './api';
 import './App.css';
+
+const AUTH_USER = 'Tracy McGrady';
+const AUTH_PASS = '666888';
+const AUTH_STORAGE_KEY = 'llmCouncilAuth';
+const USER_STORAGE_KEY = 'llmCouncilUser';
 
 function App() {
   const [conversations, setConversations] = useState([]);
   const [currentConversationId, setCurrentConversationId] = useState(null);
   const [currentConversation, setCurrentConversation] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isAuthed, setIsAuthed] = useState(
+    () => localStorage.getItem(AUTH_STORAGE_KEY) === 'true'
+  );
+  const [authedUser, setAuthedUser] = useState(
+    () => localStorage.getItem(USER_STORAGE_KEY) || ''
+  );
 
   // Load conversations on mount
   useEffect(() => {
-    loadConversations();
-  }, []);
+    if (isAuthed) {
+      loadConversations();
+    }
+  }, [isAuthed]);
 
   // Load conversation details when selected
   useEffect(() => {
-    if (currentConversationId) {
+    if (isAuthed && currentConversationId) {
       loadConversation(currentConversationId);
     }
-  }, [currentConversationId]);
+  }, [isAuthed, currentConversationId]);
 
   const loadConversations = async () => {
     try {
@@ -55,6 +69,27 @@ function App() {
 
   const handleSelectConversation = (id) => {
     setCurrentConversationId(id);
+  };
+
+  const handleLogin = (username, password) => {
+    if (username === AUTH_USER && password === AUTH_PASS) {
+      localStorage.setItem(AUTH_STORAGE_KEY, 'true');
+      localStorage.setItem(USER_STORAGE_KEY, username);
+      setIsAuthed(true);
+      setAuthedUser(username);
+      return true;
+    }
+    return false;
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+    localStorage.removeItem(USER_STORAGE_KEY);
+    setIsAuthed(false);
+    setAuthedUser('');
+    setConversations([]);
+    setCurrentConversationId(null);
+    setCurrentConversation(null);
   };
 
   const handleSendMessage = async (content) => {
@@ -181,6 +216,10 @@ function App() {
     }
   };
 
+  if (!isAuthed) {
+    return <Login onLogin={handleLogin} />;
+  }
+
   return (
     <div className="app">
       <Sidebar
@@ -188,6 +227,8 @@ function App() {
         currentConversationId={currentConversationId}
         onSelectConversation={handleSelectConversation}
         onNewConversation={handleNewConversation}
+        userName={authedUser || AUTH_USER}
+        onLogout={handleLogout}
       />
       <ChatInterface
         conversation={currentConversation}

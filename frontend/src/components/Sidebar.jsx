@@ -6,14 +6,31 @@ export default function Sidebar({
   currentConversationId,
   onSelectConversation,
   onNewConversation,
+  userName,
+  onLogout,
 }) {
   return (
     <div className="sidebar">
       <div className="sidebar-header">
-        <h1>LLM Council</h1>
+        <div className="sidebar-brand">
+          <h1>LLM Council</h1>
+          <p>Multi-model debate, one clear answer.</p>
+        </div>
         <button className="new-conversation-btn" onClick={onNewConversation}>
           + New Conversation
         </button>
+      </div>
+
+      <div className="sidebar-user">
+        <div className="user-meta">
+          <span className="user-label">Signed in</span>
+          <span className="user-name">{userName || 'Member'}</span>
+        </div>
+        {onLogout && (
+          <button className="logout-btn" onClick={onLogout}>
+            Log out
+          </button>
+        )}
       </div>
 
       <div className="conversation-list">
