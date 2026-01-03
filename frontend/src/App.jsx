@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatInterface from './components/ChatInterface';
 import Login from './components/Login';
@@ -9,6 +9,22 @@ const AUTH_USER = 'Tracy McGrady';
 const AUTH_PASS = '666888';
 const AUTH_STORAGE_KEY = 'llmCouncilAuth';
 const USER_STORAGE_KEY = 'llmCouncilUser';
+const MAX_LOAD_RETRIES = 3;
+const RETRY_BASE_MS = 600;
+
+const clearRetry = (ref) => {
+  if (ref.current) {
+    clearTimeout(ref.current);
+    ref.current = null;
+  }
+};
+
+const scheduleRetry = (ref, fn, attempt) => {
+  if (attempt >= MAX_LOAD_RETRIES) return;
+  const delay = Math.min(5000, RETRY_BASE_MS * 2 ** attempt);
+  clearRetry(ref);
+  ref.current = setTimeout(() => fn(attempt + 1), delay);
+};
 
 function App() {
   const [conversations, setConversations] = useState([]);
@@ -21,6 +37,9 @@ function App() {
   const [authedUser, setAuthedUser] = useState(
     () => localStorage.getItem(USER_STORAGE_KEY) || ''
   );
+  const listRetryRef = useRef(null);
+  const conversationRetryRef = useRef(null);
+  const latestConversationIdRef = useRef(null);
 
   // Load conversations on mount
   useEffect(() => {
@@ -36,30 +55,48 @@ function App() {
     }
   }, [isAuthed, currentConversationId]);
 
-  const loadConversations = async () => {
+  useEffect(() => {
+    latestConversationIdRef.current = currentConversationId;
+    clearRetry(conversationRetryRef);
+  }, [currentConversationId]);
+
+  useEffect(() => {
+    return () => {
+      clearRetry(listRetryRef);
+      clearRetry(conversationRetryRef);
+    };
+  }, []);
+
+  const loadConversations = async (attempt = 0) => {
     try {
       const convs = await api.listConversations();
       setConversations(convs);
     } catch (error) {
       console.error('Failed to load conversations:', error);
+      scheduleRetry(listRetryRef, loadConversations, attempt);
     }
   };
 
-  const loadConversation = async (id) => {
+  const loadConversation = async (id, attempt = 0) => {
     try {
       const conv = await api.getConversation(id);
+      if (latestConversationIdRef.current !== id) return;
       setCurrentConversation(conv);
     } catch (error) {
       console.error('Failed to load conversation:', error);
+      scheduleRetry(conversationRetryRef, (nextAttempt) => {
+        if (latestConversationIdRef.current !== id) return;
+        loadConversation(id, nextAttempt);
+      }, attempt);
     }
   };
 
   const handleNewConversation = async () => {
     try {
       const newConv = await api.createConversation();
-      setConversations([
+      setConversations((prev) => [
         { id: newConv.id, created_at: newConv.created_at, message_count: 0 },
-        ...conversations,
+        ...prev,
       ]);
       setCurrentConversationId(newConv.id);
     } catch (error) {
@@ -83,6 +120,8 @@ function App() {
   };
 
   const handleLogout = () => {
+    clearRetry(listRetryRef);
+    clearRetry(conversationRetryRef);
     localStorage.removeItem(AUTH_STORAGE_KEY);
     localStorage.removeItem(USER_STORAGE_KEY);
     setIsAuthed(false);
