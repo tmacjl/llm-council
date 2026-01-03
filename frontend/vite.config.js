@@ -7,6 +7,8 @@ export default defineConfig({
   preview: {
     allowedHosts: [
       'llm-council-frontend-production.up.railway.app',
+      '.up.railway.app',
+      '.railway.internal',
       'localhost',
       '127.0.0.1',
     ],
