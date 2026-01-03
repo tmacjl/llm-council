@@ -194,10 +194,25 @@
 
 @media (max-width: 900px) {
   .messages-container {
-    padding: 18px;
+    padding: 16px;
   }
 
   .input-form {
-    padding: 16px;
+    padding: 12px 14px;
+    gap: 10px;
+  }
+
+  .message-group {
+    margin-bottom: 24px;
+  }
+
+  .message-input {
+    min-height: 64px;
+    font-size: 14px;
+  }
+
+  .send-button {
+    padding: 10px 16px;
+    font-size: 14px;
   }
 }

@@ -65,3 +65,20 @@
   color: var(--ink);
   line-height: 1.6;
 }
+
+@media (max-width: 900px) {
+  .stage {
+    padding: 16px;
+  }
+
+  .tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+}

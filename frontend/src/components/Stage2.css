@@ -150,3 +150,16 @@
   color: var(--muted);
   font-size: 12px;
 }
+
+@media (max-width: 900px) {
+  .stage2 .tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .stage2 .tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+}
