@@ -93,27 +93,79 @@ export const api = {
       throw new Error('Failed to send message');
     }
 
+    if (!response.body) {
+      throw new Error('Stream not available');
+    }
+
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
+    let buffer = '';
+    let receivedEvent = false;
+    let sawTerminalEvent = false;
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+    const handleEvent = (event) => {
+      receivedEvent = true;
+      if (event.type === 'complete' || event.type === 'error') {
+        sawTerminalEvent = true;
+      }
+      onEvent(event.type, event);
+    };
 
-      const chunk = decoder.decode(value);
-      const lines = chunk.split('\n');
+    const processBuffer = () => {
+      buffer = buffer.replace(/\r/g, '');
+      let boundary = buffer.indexOf('\n\n');
+      while (boundary !== -1) {
+        const rawEvent = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        boundary = buffer.indexOf('\n\n');
 
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6);
-          try {
-            const event = JSON.parse(data);
-            onEvent(event.type, event);
-          } catch (e) {
-            console.error('Failed to parse SSE event:', e);
-          }
+        if (!rawEvent.trim()) {
+          continue;
+        }
+
+        const dataLines = rawEvent
+          .split('\n')
+          .filter((line) => line.startsWith('data:'));
+        if (dataLines.length === 0) {
+          continue;
+        }
+
+        const data = dataLines
+          .map((line) => line.slice(5).trimStart())
+          .join('\n');
+        try {
+          const event = JSON.parse(data);
+          handleEvent(event);
+        } catch (e) {
+          console.error('Failed to parse SSE event:', e);
         }
       }
+    };
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        processBuffer();
+      }
+
+      buffer += decoder.decode();
+      processBuffer();
+    } catch (error) {
+      if (receivedEvent) {
+        handleEvent({ type: 'error', message: error?.message || 'Stream error' });
+        return;
+      }
+      throw error;
+    }
+
+    if (!sawTerminalEvent) {
+      if (receivedEvent) {
+        handleEvent({ type: 'error', message: 'Stream ended unexpectedly' });
+        return;
+      }
+      throw new Error('Stream ended unexpectedly');
     }
   },
 };

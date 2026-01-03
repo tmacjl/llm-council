@@ -199,6 +199,23 @@ function App() {
           case 'error':
             console.error('Stream error:', event.message);
             setIsLoading(false);
+            setCurrentConversation((prev) => {
+              if (!prev || !prev.messages?.length) return prev;
+              const messages = [...prev.messages];
+              const lastMsg = messages[messages.length - 1];
+              const isAssistant = lastMsg?.role === 'assistant';
+              const isEmpty =
+                !lastMsg?.stage1 && !lastMsg?.stage2 && !lastMsg?.stage3;
+              const isNotLoading =
+                !lastMsg?.loading?.stage1 &&
+                !lastMsg?.loading?.stage2 &&
+                !lastMsg?.loading?.stage3;
+              if (isAssistant && isEmpty && isNotLoading) {
+                messages.pop();
+                return { ...prev, messages };
+              }
+              return prev;
+            });
             break;
 
           default:

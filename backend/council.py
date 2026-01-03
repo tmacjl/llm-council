@@ -1,8 +1,31 @@
 """3-stage LLM Council orchestration."""
 
+import os
+
 from typing import List, Dict, Any, Tuple
 from .openrouter import query_models_parallel, query_model
 from .config import COUNCIL_MODELS, CHAIRMAN_MODEL
+
+# --- OpenRouter web-search (online) defaults ---
+# Tuned to be cheap by default. Turn on per-stage when you really need freshness.
+#
+# Env examples:
+#   OPENROUTER_ONLINE_STAGE1=1 OPENROUTER_WEB_MAX_RESULTS_STAGE1=2
+#   OPENROUTER_ONLINE_STAGE3=1 OPENROUTER_WEB_MAX_RESULTS_STAGE3=1
+#   OPENROUTER_ONLINE_STAGE2=0  (ranking does not usually need web search)
+OPENROUTER_ONLINE_STAGE1 = os.getenv("OPENROUTER_ONLINE_STAGE1", "1").lower() in ("1", "true", "yes", "y", "on")
+OPENROUTER_ONLINE_STAGE2 = os.getenv("OPENROUTER_ONLINE_STAGE2", "1").lower() in ("1", "true", "yes", "y", "on")
+OPENROUTER_ONLINE_STAGE3 = os.getenv("OPENROUTER_ONLINE_STAGE3", "1").lower() in ("1", "true", "yes", "y", "on")
+
+OPENROUTER_WEB_ENGINE = os.getenv("OPENROUTER_WEB_ENGINE") or None  # "native" | "exa" | None
+
+# Keep results small to control cost; Stage3 typically only needs 1–2 results for spot-checking.
+OPENROUTER_WEB_MAX_RESULTS_STAGE1 = int(os.getenv("OPENROUTER_WEB_MAX_RESULTS_STAGE1", "2"))
+OPENROUTER_WEB_MAX_RESULTS_STAGE2 = int(os.getenv("OPENROUTER_WEB_MAX_RESULTS_STAGE2", "1"))
+OPENROUTER_WEB_MAX_RESULTS_STAGE3 = int(os.getenv("OPENROUTER_WEB_MAX_RESULTS_STAGE3", "1"))
+
+# Native search context sizing (when supported). Default to "low" for cost control.
+OPENROUTER_WEB_CONTEXT_SIZE = (os.getenv("OPENROUTER_WEB_CONTEXT_SIZE") or "low")
 
 
 async def stage1_collect_responses(user_query: str) -> List[Dict[str, Any]]:
@@ -18,7 +41,14 @@ async def stage1_collect_responses(user_query: str) -> List[Dict[str, Any]]:
     messages = [{"role": "user", "content": user_query}]
 
     # Query all models in parallel
-    responses = await query_models_parallel(COUNCIL_MODELS, messages)
+    responses = await query_models_parallel(
+        COUNCIL_MODELS,
+        messages,
+        online=OPENROUTER_ONLINE_STAGE1,
+        web_engine=OPENROUTER_WEB_ENGINE,
+        web_max_results=OPENROUTER_WEB_MAX_RESULTS_STAGE1,
+        web_search_context_size=OPENROUTER_WEB_CONTEXT_SIZE,
+    )
 
     # Format results
     stage1_results = []
@@ -26,7 +56,8 @@ async def stage1_collect_responses(user_query: str) -> List[Dict[str, Any]]:
         if response is not None:  # Only include successful responses
             stage1_results.append({
                 "model": model,
-                "response": response.get('content', '')
+                "response": response.get('content', ''),
+                "annotations": response.get('annotations')
             })
 
     return stage1_results
@@ -95,7 +126,14 @@ Now provide your evaluation and ranking:"""
     messages = [{"role": "user", "content": ranking_prompt}]
 
     # Get rankings from all council models in parallel
-    responses = await query_models_parallel(COUNCIL_MODELS, messages)
+    responses = await query_models_parallel(
+        COUNCIL_MODELS,
+        messages,
+        online=OPENROUTER_ONLINE_STAGE2,
+        web_engine=OPENROUTER_WEB_ENGINE,
+        web_max_results=OPENROUTER_WEB_MAX_RESULTS_STAGE2,
+        web_search_context_size=OPENROUTER_WEB_CONTEXT_SIZE,
+    )
 
     # Format results
     stage2_results = []
@@ -159,7 +197,14 @@ Provide a clear, well-reasoned final answer that represents the council's collec
     messages = [{"role": "user", "content": chairman_prompt}]
 
     # Query the chairman model
-    response = await query_model(CHAIRMAN_MODEL, messages)
+    response = await query_model(
+        CHAIRMAN_MODEL,
+        messages,
+        online=OPENROUTER_ONLINE_STAGE3,
+        web_engine=OPENROUTER_WEB_ENGINE,
+        web_max_results=OPENROUTER_WEB_MAX_RESULTS_STAGE3,
+        web_search_context_size=OPENROUTER_WEB_CONTEXT_SIZE,
+    )
 
     if response is None:
         # Fallback if chairman fails
